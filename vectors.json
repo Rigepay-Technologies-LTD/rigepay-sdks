@@ -1,0 +1,13 @@
+{
+  "signature": {
+    "secret": "whsec_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "method": "POST",
+    "url": "https://yourapp.example.com/webhooks/rigepay?src=rigepay",
+    "timestamp": "1769424764",
+    "request_id": "3f1b7c2a-9d4e-4a1b-8c2d-5e6f7a8b9c0d",
+    "body": "{\"id\":\"evt_1\",\"escrow\":\"ok\"}",
+    "body_sha256": "d55aa74563ec7e9c356ddc7bba9b5de42484a7431a6c69b6b9a5991c022a7504",
+    "signature": "28e8ec67d7490f3f2d23cbe43f156139de77a9b9f09c07cd8a1f2267d6813ac2",
+    "source": "pkg/utils/outbound_signing_vector_test.go in the API repository: the server signer produces exactly this value"
+  }
+}

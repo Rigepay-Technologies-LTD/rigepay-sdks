@@ -1,0 +1,12 @@
+{
+  "name": "@rigepay/sdk",
+  "version": "0.1.0",
+  "description": "RigePay API client for Node.js 20+ with no dependencies: idempotency, retries and webhook signature verification",
+  "type": "module",
+  "main": "index.mjs",
+  "exports": "./index.mjs",
+  "engines": { "node": ">=20" },
+  "scripts": { "test": "node --test" },
+  "license": "UNLICENSED",
+  "private": true
+}
