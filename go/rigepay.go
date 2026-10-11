@@ -32,7 +32,14 @@ type Client struct {
 }
 
 func New(token string) *Client {
-	c := &Client{Token: token, BaseURL: DefaultBaseURL, MaxRetries: 3, HTTP: &http.Client{Timeout: 30 * time.Second}}
+	c := &Client{
+		Token:      token,
+		BaseURL:    DefaultBaseURL,
+		MaxRetries: 3,
+		HTTP: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
 	c.Escrows = &EscrowsService{c: c}
 	return c
 }
@@ -139,7 +146,12 @@ func (c *Client) Do(ctx context.Context, method, path string, req Request, out a
 		}
 		_ = json.Unmarshal(raw, &env)
 		if resp.StatusCode >= 400 {
-			return nil, &Error{Status: resp.StatusCode, Code: env.Code, Message: env.Message, Body: raw}
+			return nil, &Error{
+				Status:  resp.StatusCode,
+				Code:    env.Code,
+				Message: env.Message,
+				Body:    raw,
+			}
 		}
 		if out != nil && len(env.Data) > 0 {
 			if err := json.Unmarshal(env.Data, out); err != nil {

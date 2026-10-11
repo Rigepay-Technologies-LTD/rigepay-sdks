@@ -17,7 +17,7 @@ import (
 	"os"
 	"time"
 
-	rigepay "github.com/rigepay-technologies-ltd/rigepay-go"
+	rigepay "github.com/Rigepay-Technologies-LTD/rigepay-go"
 )
 
 func main() {

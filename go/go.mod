@@ -1,3 +1,3 @@
-module github.com/rigepay-technologies-ltd/rigepay-go
+module github.com/Rigepay-Technologies-LTD/rigepay-go
 
 go 1.22
