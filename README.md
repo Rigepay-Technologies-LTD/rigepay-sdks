@@ -13,7 +13,7 @@ Small, dependency-free clients for the RigePay escrow API in Node.js, Go, Python
 |---|---|---|
 | `node/` | `node --test` | tested |
 | `go/` | `GOWORK=off go test ./...` | tested |
-| `python/` | `python -m unittest discover -s tests` | written, **not yet run** |
-| `php/` | `php tests/run.php` | written, **not yet run** |
+| `python/` | `python -m unittest discover -s tests` | tested (4 tests, python:3.12) |
+| `php/` | `php tests/run.php` | tested (9 checks, php:8.3) |
 
 Nothing here is published. Publishing (npm, pkg.go.dev, PyPI, Packagist), a licence and a git repository for this folder are decisions for RigePay.
