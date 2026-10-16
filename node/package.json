@@ -4,9 +4,24 @@
   "description": "RigePay API client for Node.js 20+ with no dependencies: idempotency, retries and webhook signature verification",
   "type": "module",
   "main": "index.mjs",
-  "exports": "./index.mjs",
-  "engines": { "node": ">=20" },
-  "scripts": { "test": "node --test" },
+  "exports": {
+    ".": {
+      "types": "./index.d.mts",
+      "default": "./index.mjs"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
   "license": "UNLICENSED",
-  "private": true
+  "private": true,
+  "types": "./index.d.mts",
+  "files": [
+    "index.mjs",
+    "index.d.mts"
+  ]
 }
