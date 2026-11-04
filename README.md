@@ -107,9 +107,9 @@ The tests use mocked transports and make no network calls.
 
 | SDK | Run the tests | Status |
 |---|---|---|
-| `node/` | `node --test` | tested (39 tests, node 24) |
-| `go/` | `GOWORK=off go test ./...` | tested (10 tests, 26 subtests, go 1.26) |
-| `python/` | `python -m unittest discover -s tests` | tested (12 tests, python 3.12 and 3.10) |
+| `node/` | `node --test` | tested (41 tests, node 24) |
+| `go/` | `GOWORK=off go test ./...` | tested (12 tests, 26 subtests, go 1.26) |
+| `python/` | `python -m unittest discover -s tests` | tested (14 tests, python 3.12 and 3.10) |
 | `php/` | `php tests/run.php` | escrow checks tested (9 checks, php:8.3); the payments checks have not been run yet |
 
 Nothing here is published. Publishing (npm, pkg.go.dev, PyPI, Packagist), a licence and a git repository for this folder are decisions for RigePay.

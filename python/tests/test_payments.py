@@ -146,6 +146,14 @@ class PaymentsRequestTests(unittest.TestCase):
         self.assertEqual(len(keys), 3)
         self.assertTrue(keys[0] and all(k == keys[0] for k in keys))
 
+    def test_path_ids_are_url_encoded(self):
+        calls = []
+        client = Client("k", opener=scripted([], calls), sleep=lambda s: None)
+        client.transactions.get("a/b?c")
+        client.payment_links.close("../x")
+        self.assertEqual(calls[0].full_url, BASE + "/payments/transactions/a%2Fb%3Fc")
+        self.assertEqual(calls[1].full_url, BASE + "/payments/payment-links/..%2Fx/close")
+
     def test_amounts_must_be_integer_cents(self):
         client = Client("k", opener=scripted([], []), sleep=lambda s: None)
         with self.assertRaises(TypeError):
@@ -197,6 +205,14 @@ class ClientCredentialsTests(unittest.TestCase):
         with self.assertRaises(RigePayError) as ctx:
             client.oauth.create_token("a", "b")
         self.assertEqual(ctx.exception.code, "invalid_client")
+
+    def test_a_late_401_only_drops_the_token_that_was_refused(self):
+        client = Client(client_id="cid", client_secret="s", opener=token_server([]), sleep=lambda s: None)
+        client._access_token = "at-2"
+        client._invalidate_token("at-1")
+        self.assertEqual(client._access_token, "at-2")
+        client._invalidate_token("at-2")
+        self.assertIsNone(client._access_token)
 
     def test_a_credential_is_required(self):
         with self.assertRaises(ValueError):

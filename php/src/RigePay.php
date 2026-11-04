@@ -158,7 +158,8 @@ class Client
         for ($attempt = 0; ; $attempt++) {
             $headers = ['Accept' => 'application/json'];
             if ($auth) {
-                $headers['Authorization'] = 'Bearer ' . $this->getToken();
+                $bearer = $this->getToken();
+                $headers['Authorization'] = 'Bearer ' . $bearer;
             }
             if ($payload !== null) {
                 $headers['Content-Type'] = 'application/json';
@@ -178,7 +179,10 @@ class Client
             if ($res['status'] === 401 && $auth && $this->usesClientCredentials() && !$refreshed) {
                 // The cached access token was revoked or expired early: fetch a new one once, same key.
                 $refreshed = true;
-                $this->accessToken = null;
+                // Clear only if no concurrent request has already replaced the token that was refused.
+                if ($this->accessToken === $bearer) {
+                    $this->accessToken = null;
+                }
                 continue;
             }
             if (in_array($res['status'], [429, 502, 503, 504], true) && $attempt < $this->maxRetries) {
@@ -313,7 +317,7 @@ class Checkout extends Resource
 
     public function getSession(string $id): mixed
     {
-        return $this->c->data('GET', "/payments/checkout/sessions/$id");
+        return $this->c->data('GET', '/payments/checkout/sessions/' . rawurlencode($id));
     }
 }
 
@@ -360,7 +364,7 @@ class BulkPayouts extends Resource
 
     public function get(string $batchId): mixed
     {
-        return $this->c->data('GET', "/payments/bulk-payouts/$batchId");
+        return $this->c->data('GET', '/payments/bulk-payouts/' . rawurlencode($batchId));
     }
 }
 
@@ -415,7 +419,7 @@ class Transactions extends Resource
 
     public function get(string $id): mixed
     {
-        return $this->c->data('GET', "/payments/transactions/$id");
+        return $this->c->data('GET', '/payments/transactions/' . rawurlencode($id));
     }
 }
 
@@ -435,12 +439,12 @@ class PaymentLinks extends Resource
 
     public function get(string $id): array
     {
-        return $this->c->request('GET', "/payments/payment-links/$id");
+        return $this->c->request('GET', '/payments/payment-links/' . rawurlencode($id));
     }
 
     public function close(string $id, ?string $idempotencyKey = null): array
     {
-        return $this->c->request('POST', "/payments/payment-links/$id/close", null, [], $idempotencyKey);
+        return $this->c->request('POST', '/payments/payment-links/' . rawurlencode($id) . '/close', null, [], $idempotencyKey);
     }
 }
 
@@ -460,12 +464,12 @@ class Invoices extends Resource
 
     public function get(string $id): mixed
     {
-        return $this->c->data('GET', "/payments/invoices/$id");
+        return $this->c->data('GET', '/payments/invoices/' . rawurlencode($id));
     }
 
     public function cancel(string $id, ?string $idempotencyKey = null): mixed
     {
-        return $this->c->data('POST', "/payments/invoices/$id/cancel", null, [], $idempotencyKey);
+        return $this->c->data('POST', '/payments/invoices/' . rawurlencode($id) . '/cancel', null, [], $idempotencyKey);
     }
 }
 

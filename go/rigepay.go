@@ -117,9 +117,13 @@ func (c *Client) BearerToken(ctx context.Context) (string, error) {
 	return c.accessToken, nil
 }
 
-func (c *Client) invalidateToken() {
+// invalidateToken drops the cached access token, but only if it is still the one that was refused,
+// so a concurrent request's late 401 does not discard a token another request just fetched.
+func (c *Client) invalidateToken(refused string) {
 	c.tokenMu.Lock()
-	c.accessToken = ""
+	if c.accessToken == refused {
+		c.accessToken = ""
+	}
 	c.tokenMu.Unlock()
 }
 
@@ -196,12 +200,13 @@ func (c *Client) Do(ctx context.Context, method, path string, req Request, out a
 		if err != nil {
 			return nil, err
 		}
+		var bearer string
 		if !req.NoAuth {
-			token, err := c.BearerToken(ctx)
+			bearer, err = c.BearerToken(ctx)
 			if err != nil {
 				return nil, err
 			}
-			hr.Header.Set("Authorization", "Bearer "+token)
+			hr.Header.Set("Authorization", "Bearer "+bearer)
 		}
 		hr.Header.Set("Accept", "application/json")
 		if payload != nil {
@@ -225,7 +230,7 @@ func (c *Client) Do(ctx context.Context, method, path string, req Request, out a
 		if resp.StatusCode == http.StatusUnauthorized && !req.NoAuth && c.usesClientCredentials() && !refreshed {
 			// The cached access token was revoked or expired early: fetch a new one once, same key.
 			refreshed = true
-			c.invalidateToken()
+			c.invalidateToken(bearer)
 			continue
 		}
 		retryable := resp.StatusCode == 429 || resp.StatusCode == 502 || resp.StatusCode == 503 || resp.StatusCode == 504

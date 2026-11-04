@@ -211,7 +211,8 @@ type ApprovalCeiling struct {
 	Enforceable      bool  `json:"enforceable"`
 }
 
-// ApprovalCeiling reports whether a high-value approval ceiling applies. amountCents 0 omits the amount.
+// ApprovalCeiling reports the organization's high-value approval ceiling settings. The server does
+// not read amount_cents today; amountCents is sent (when > 0) for forward compatibility only.
 func (s *PayoutsService) ApprovalCeiling(ctx context.Context, amountCents int64) (*ApprovalCeiling, error) {
 	q := url.Values{}
 	if amountCents > 0 {

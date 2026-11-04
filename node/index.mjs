@@ -79,7 +79,8 @@ export class RigePay {
     let refreshed = false
 
     for (let attempt = 0; ; attempt++) {
-      const sent = auth ? { ...headers, Authorization: `Bearer ${await this.getToken()}` } : headers
+      const bearer = auth ? await this.getToken() : undefined
+      const sent = auth ? { ...headers, Authorization: `Bearer ${bearer}` } : headers
       let res
       try {
         res = await this.fetch(url, { method, headers: sent, body: payload, signal: AbortSignal.timeout(this.timeoutMs) })
@@ -91,7 +92,8 @@ export class RigePay {
       if (res.status === 401 && auth && !this.token && !refreshed) {
         // The cached access token was revoked or expired early: fetch a new one once, same key.
         refreshed = true
-        this._cached = null
+        // Clear only if no concurrent request has already replaced the token that was refused.
+        if (this._cached?.accessToken === bearer) this._cached = null
         continue
       }
       if (RETRY_STATUSES.has(res.status) && attempt < this.maxRetries) {
@@ -192,7 +194,7 @@ class Checkout {
   createSession({ amountCents, allowedRails, branchId, description, metadata, idempotencyKey }) {
     return this.c.data('POST', '/payments/checkout/sessions', { body: compact({ amount_cents: cents('amountCents', amountCents), allowed_rails: allowedRails, branch_id: branchId, description, metadata }), idempotencyKey })
   }
-  getSession(id) { return this.c.data('GET', `/payments/checkout/sessions/${id}`) }
+  getSession(id) { return this.c.data('GET', `/payments/checkout/sessions/${encodeURIComponent(id)}`) }
 }
 
 function destination(o) {
@@ -225,7 +227,7 @@ class BulkPayouts {
     return this.c.data('POST', '/payments/bulk-payouts', { body: compact({ funding_source: fundingSource, vault_id: vaultId, remarks, items: rows }), idempotencyKey })
   }
   list() { return this.c.data('GET', '/payments/bulk-payouts') }
-  get(batchId) { return this.c.data('GET', `/payments/bulk-payouts/${batchId}`) }
+  get(batchId) { return this.c.data('GET', `/payments/bulk-payouts/${encodeURIComponent(batchId)}`) }
 }
 
 class Transfers {
@@ -261,7 +263,7 @@ class Transactions {
   }
   // query uses the API's names: page, page_size, search, status, direction, type, rail, start_date, end_date, min_amount, max_amount, branch_id.
   list(query) { return this.c.data('GET', '/payments/transactions', { query }) }
-  get(id) { return this.c.data('GET', `/payments/transactions/${id}`) }
+  get(id) { return this.c.data('GET', `/payments/transactions/${encodeURIComponent(id)}`) }
 }
 
 class PaymentLinks {
@@ -274,8 +276,8 @@ class PaymentLinks {
     return this.c.request('POST', '/payments/payment-links', { body, idempotencyKey })
   }
   list(query) { return this.c.request('GET', '/payments/payment-links', { query }) }
-  get(id) { return this.c.request('GET', `/payments/payment-links/${id}`) }
-  close(id, opts) { return this.c.request('POST', `/payments/payment-links/${id}/close`, opts) }
+  get(id) { return this.c.request('GET', `/payments/payment-links/${encodeURIComponent(id)}`) }
+  close(id, opts) { return this.c.request('POST', `/payments/payment-links/${encodeURIComponent(id)}/close`, opts) }
 }
 
 class Invoices {
@@ -288,8 +290,8 @@ class Invoices {
     return this.c.request('POST', '/payments/invoices', { body, idempotencyKey })
   }
   list(query) { return this.c.request('GET', '/payments/invoices', { query }) }
-  get(id) { return this.c.data('GET', `/payments/invoices/${id}`) }
-  cancel(id, opts) { return this.c.data('POST', `/payments/invoices/${id}/cancel`, opts) }
+  get(id) { return this.c.data('GET', `/payments/invoices/${encodeURIComponent(id)}`) }
+  cancel(id, opts) { return this.c.data('POST', `/payments/invoices/${encodeURIComponent(id)}/cancel`, opts) }
 }
 
 // Amounts are integer cents. A float would be truncated or rejected server-side, so refuse it here.

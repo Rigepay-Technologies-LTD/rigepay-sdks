@@ -84,6 +84,12 @@ class Client:
             self._refresh_at = self._clock() + float(t["expires_in"]) - self.token_refresh_skew
             return self._access_token
 
+    def _invalidate_token(self, refused: str) -> None:
+        # Clear only if no concurrent request has already replaced the token that was refused.
+        with self._token_lock:
+            if self._access_token == refused:
+                self._access_token = None
+
     def whoami(self) -> Any:
         return self.data("GET", "/payments/whoami")
 
@@ -98,7 +104,8 @@ class Client:
         for attempt in range(self.max_retries + 2):
             headers = {"Accept": "application/json"}
             if auth:
-                headers["Authorization"] = f"Bearer {self.get_token()}"
+                bearer = self.get_token()
+                headers["Authorization"] = f"Bearer {bearer}"
             if payload is not None:
                 headers["Content-Type"] = "application/json"
             if key:
@@ -119,7 +126,7 @@ class Client:
             if status == 401 and auth and not self.token and not refreshed:
                 # The cached access token was revoked or expired early: fetch a new one once, same key.
                 refreshed = True
-                self._access_token = None
+                self._invalidate_token(bearer)
                 continue
             if status in RETRY_STATUSES and attempt < self.max_retries:
                 self._sleep(_backoff(attempt, retry_after))
@@ -174,6 +181,11 @@ class Escrows:
         return self.c.data("POST", f"/escrows/{escrow_id}/disputes/{dispute_id}/concede", idempotency_key=idempotency_key)
 
 
+def _path(segment: str) -> str:
+    """Percent-encode an id for use as one path segment (matches Go's url.PathEscape for '/')."""
+    return urllib.parse.quote(str(segment), safe="")
+
+
 def _cents(name: str, value: Any) -> Any:
     """Amounts are integer cents; refuse floats (and bools, which are ints in Python)."""
     if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
@@ -219,7 +231,7 @@ class Checkout:
         return self.c.data("POST", "/payments/checkout/sessions", body=body, idempotency_key=idempotency_key)
 
     def get_session(self, session_id: str):
-        return self.c.data("GET", f"/payments/checkout/sessions/{session_id}")
+        return self.c.data("GET", f"/payments/checkout/sessions/{_path(session_id)}")
 
 
 class Payouts:
@@ -260,7 +272,7 @@ class BulkPayouts:
         return self.c.data("GET", "/payments/bulk-payouts")
 
     def get(self, batch_id: str):
-        return self.c.data("GET", f"/payments/bulk-payouts/{batch_id}")
+        return self.c.data("GET", f"/payments/bulk-payouts/{_path(batch_id)}")
 
 
 class Transfers:
@@ -310,7 +322,7 @@ class Transactions:
         return self.c.data("GET", "/payments/transactions", query=query)
 
     def get(self, transaction_id: str):
-        return self.c.data("GET", f"/payments/transactions/{transaction_id}")
+        return self.c.data("GET", f"/payments/transactions/{_path(transaction_id)}")
 
 
 class PaymentLinks:
@@ -333,10 +345,10 @@ class PaymentLinks:
         return self.c.request("GET", "/payments/payment-links", query=query)
 
     def get(self, link_id: str) -> dict:
-        return self.c.request("GET", f"/payments/payment-links/{link_id}")
+        return self.c.request("GET", f"/payments/payment-links/{_path(link_id)}")
 
     def close(self, link_id: str, idempotency_key: Optional[str] = None) -> dict:
-        return self.c.request("POST", f"/payments/payment-links/{link_id}/close", idempotency_key=idempotency_key)
+        return self.c.request("POST", f"/payments/payment-links/{_path(link_id)}/close", idempotency_key=idempotency_key)
 
 
 class Invoices:
@@ -356,10 +368,10 @@ class Invoices:
         return self.c.request("GET", "/payments/invoices", query=query)
 
     def get(self, invoice_id: str):
-        return self.c.data("GET", f"/payments/invoices/{invoice_id}")
+        return self.c.data("GET", f"/payments/invoices/{_path(invoice_id)}")
 
     def cancel(self, invoice_id: str, idempotency_key: Optional[str] = None):
-        return self.c.data("POST", f"/payments/invoices/{invoice_id}/cancel", idempotency_key=idempotency_key)
+        return self.c.data("POST", f"/payments/invoices/{_path(invoice_id)}/cancel", idempotency_key=idempotency_key)
 
 
 def sign(secret: str, url: str, timestamp: str, request_id: str, body: bytes, method: str = "POST") -> str:

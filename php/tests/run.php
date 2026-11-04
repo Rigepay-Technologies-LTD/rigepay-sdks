@@ -183,6 +183,34 @@ check(count($api) === 2 && $api[0]['headers']['Authorization'] === 'Bearer at-1'
     && $api[0]['headers']['X-Idempotency-Key'] === $api[1]['headers']['X-Idempotency-Key'], 'a 401 refreshes the token once with the same idempotency key');
 
 $calls = [];
+$responses = [];
+$client = new Client('k', transport: $record($calls, $responses), sleep: fn($s) => null);
+$client->transactions->get('a/b?c');
+$client->paymentLinks->close('../x');
+check($calls[0]['url'] === $base . '/payments/transactions/a%2Fb%3Fc' && $calls[1]['url'] === $base . '/payments/payment-links/..%2Fx/close', 'path ids are URL-encoded');
+
+// A late 401 for at-1 arrives after another request already cached at-2: at-2 must be kept and used.
+$calls = [];
+$tokenFetches = 0;
+$client = null;
+$client = new Client(clientId: 'cid', clientSecret: 's', sleep: fn($s) => null, transport: function ($method, $url, $headers, $payload) use (&$calls, &$tokenFetches, &$client) {
+    $calls[] = ['url' => $url, 'headers' => $headers];
+    if (str_ends_with($url, '/oauth/token')) {
+        $tokenFetches++;
+        return ['status' => 200, 'headers' => [], 'body' => json_encode(['access_token' => "at-$tokenFetches", 'token_type' => 'Bearer', 'expires_in' => 3600, 'scope' => 'x'])];
+    }
+    if ($headers['Authorization'] === 'Bearer at-1') {
+        \Closure::bind(function () {
+            $this->accessToken = 'at-2';
+        }, $client, Client::class)();
+        return ['status' => 401, 'headers' => [], 'body' => json_encode(['status' => 'error', 'message' => 'revoked'])];
+    }
+    return ['status' => 200, 'headers' => [], 'body' => json_encode(['status' => 'success', 'data' => []])];
+});
+$client->whoami();
+check($tokenFetches === 1 && end($calls)['headers']['Authorization'] === 'Bearer at-2', 'a late 401 does not discard a token another request just fetched');
+
+$calls = [];
 $responses = [[401, ['status' => 'error', 'error' => 'invalid_client', 'message' => 'bad']]];
 $client = new Client('k', transport: $record($calls, $responses), sleep: fn($s) => null);
 try {

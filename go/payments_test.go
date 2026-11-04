@@ -343,3 +343,38 @@ func TestOAuthErrorCodeComesFromTheErrorField(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestPathIDsAreEscaped(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.EscapedPath())
+		_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
+	}))
+	defer srv.Close()
+	c := New("k")
+	c.BaseURL = srv.URL
+	ctx := context.Background()
+	if _, err := c.Transactions.Get(ctx, "a/b?c"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.PaymentLinks.Close(ctx, "../x", ""); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"/payments/transactions/a%2Fb%3Fc", "/payments/payment-links/..%2Fx/close"}
+	if !reflect.DeepEqual(paths, want) {
+		t.Fatalf("paths %v want %v", paths, want)
+	}
+}
+
+func TestA401OnlyDropsTheTokenThatWasRefused(t *testing.T) {
+	c := NewWithClientCredentials("cid", "s")
+	c.accessToken = "at-2"
+	c.invalidateToken("at-1")
+	if c.accessToken != "at-2" {
+		t.Fatal("a late 401 for at-1 must not discard at-2")
+	}
+	c.invalidateToken("at-2")
+	if c.accessToken != "" {
+		t.Fatal("a 401 for the cached token must clear it")
+	}
+}

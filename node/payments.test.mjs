@@ -158,3 +158,39 @@ test('OAuth errors surface their `error` as the code', async () => {
   await assert.rejects(client.oauth.createToken({ clientId: 'a', clientSecret: 'b' }), (e) => e.status === 401 && e.code === 'invalid_client')
   assert.equal(calls[0].init.headers['X-Idempotency-Key'], undefined)
 })
+
+test('path ids are URL-encoded', async () => {
+  const calls = []
+  const client = new RigePay({ token: 'k', fetchImpl: fakeFetch([], calls) })
+  await client.transactions.get('a/b?c')
+  await client.paymentLinks.close('../x')
+  assert.equal(calls[0].url.pathname, '/api/v1/payments/transactions/a%2Fb%3Fc')
+  assert.equal(calls[0].url.search, '')
+  assert.equal(calls[1].url.pathname, '/api/v1/payments/payment-links/..%2Fx/close')
+})
+
+test('a late 401 for an old token does not discard the token another request just fetched', async () => {
+  const calls = []
+  let issued = 0
+  let at2Issued
+  const at2 = new Promise((resolve) => { at2Issued = resolve })
+  const fetchImpl = async (url, init) => {
+    const u = new URL(String(url))
+    calls.push({ url: u, init })
+    if (u.pathname.endsWith('/oauth/token')) {
+      issued++
+      if (issued === 2) at2Issued()
+      return new Response(JSON.stringify({ access_token: `at-${issued}`, token_type: 'Bearer', expires_in: 3600, scope: 'x' }), { status: 200 })
+    }
+    if (init.headers.Authorization === 'Bearer at-1') {
+      // The balance request's 401 arrives only after the whoami request has refreshed and finished.
+      if (u.pathname.endsWith('/balance')) { await at2; await new Promise((r) => setTimeout(r, 20)) }
+      return new Response(JSON.stringify({ status: 'error', message: 'revoked' }), { status: 401 })
+    }
+    return new Response(JSON.stringify({ status: 'success', data: {} }), { status: 200 })
+  }
+  const client = new RigePay({ clientId: 'cid', clientSecret: 's', fetchImpl })
+  await Promise.all([client.whoami(), client.balance.get()])
+  assert.equal(issued, 2, 'the second 401 must reuse at-2, not fetch at-3')
+  assert.equal(calls.at(-1).init.headers.Authorization, 'Bearer at-2')
+})
