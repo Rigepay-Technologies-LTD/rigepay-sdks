@@ -6,7 +6,7 @@ Small, dependency-free clients for the RigePay developer API (payments and escro
 - retries 429 and 502/503/504 and network errors with backoff, honouring `Retry-After`, and never retries other 4xx;
 - raises a typed error carrying the HTTP status and RigePay `code` (for `/oauth/token` errors, the OAuth `error`);
 - authenticates with a static key (`OAK_...`) or with OAuth client credentials: the access token is fetched from `POST /oauth/token`, cached until 60 seconds before `expires_in` runs out, and refetched once if a request answers 401 (the retry keeps its idempotency key);
-- takes and returns amounts as **integer cents** and refuses floats;
+- takes and returns amounts as **integer cents**. Node and Python throw a `TypeError` on a float, and Go uses `int64`. PHP amount parameters are typed `int`, and bulk-payout rows are checked with `is_int`. In PHP, a calling file without `declare(strict_types=1)` that passes `10.5` gets a deprecation notice and the value is truncated to `10`, so declare strict types;
 - verifies webhook signatures with the exact scheme the server signs with (`webhooks`/`Webhook::verify`). Pass the endpoint URL **exactly as registered**, the raw request bytes, and the whole secret including `whsec_`.
 
 `vectors.json` holds the signature test vector. It comes from the server's own signer (`pkg/utils/outbound_signing_vector_test.go` in the API repository pins the same value), and every SDK's tests use it.
@@ -108,7 +108,7 @@ The tests use mocked transports and make no network calls.
 | SDK | Run the tests | Status |
 |---|---|---|
 | `node/` | `node --test` | tested (39 tests, node 24) |
-| `go/` | `GOWORK=off go test ./...` | tested (10 tests, 25 subtests, go 1.26) |
+| `go/` | `GOWORK=off go test ./...` | tested (10 tests, 26 subtests, go 1.26) |
 | `python/` | `python -m unittest discover -s tests` | tested (12 tests, python 3.12 and 3.10) |
 | `php/` | `php tests/run.php` | escrow checks tested (9 checks, php:8.3); the payments checks have not been run yet |
 

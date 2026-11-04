@@ -97,6 +97,7 @@ func TestPaymentsMethodsSendTheDocumentedRequest(t *testing.T) {
 			map[string]any{"amount_cents": 100.0, "recipient_name": "A", "phone_number": "0700000001"},
 			map[string]any{"amount_cents": 200.0, "recipient_name": "B", "destination_type": "BANK_ACCOUNT", "bank_code": "01", "bank_account_number": "123"},
 		}}},
+		{"BulkPayouts.List", func(c *Client) error { _, err := c.BulkPayouts.List(ctx); return err }, "GET", "/payments/bulk-payouts", nil, nil},
 		{"BulkPayouts.Get", func(c *Client) error { _, err := c.BulkPayouts.Get(ctx, "b1"); return err }, "GET", "/payments/bulk-payouts/b1", nil, nil},
 		{"Transfers.Create", func(c *Client) error {
 			_, err := c.Transfers.Create(ctx, TransferInput{From: "org", To: "br1", AmountCents: 1000, Remarks: "float"}, "")
@@ -134,6 +135,9 @@ func TestPaymentsMethodsSendTheDocumentedRequest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rc := &recorder{}
 			c := testClient(t, rc)
+			if tc.name == "BulkPayouts.List" {
+				rc.responses = append(rc.responses, reply(200, `{"status":"success","data":[{"id":"b1","total_amount_cents":300}]}`))
+			}
 			if tc.name == "BulkPayouts.Create" {
 				rc.responses = append(rc.responses, reply(201, `{"status":"success","data":{"id":"b1"}}`))
 			}
