@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,6 +30,30 @@ type Client struct {
 	MaxRetries int
 	HTTP       *http.Client
 	Escrows    *EscrowsService
+
+	// ClientID and ClientSecret, set by NewWithClientCredentials, make the client fetch an OAuth
+	// access token from /oauth/token and cache it until TokenRefreshSkew before it expires.
+	// They are used only when Token is empty.
+	ClientID         string
+	ClientSecret     string
+	TokenRefreshSkew time.Duration
+	// Now is the clock used for the token cache. Nil means time.Now.
+	Now func() time.Time
+
+	OAuth        *OAuthService
+	Collections  *CollectionsService
+	Checkout     *CheckoutService
+	Payouts      *PayoutsService
+	BulkPayouts  *BulkPayoutsService
+	Transfers    *TransfersService
+	Balance      *BalanceService
+	Transactions *TransactionsService
+	PaymentLinks *PaymentLinksService
+	Invoices     *InvoicesService
+
+	tokenMu      sync.Mutex
+	accessToken  string
+	tokenRefresh time.Time
 }
 
 func New(token string) *Client {
@@ -39,9 +64,63 @@ func New(token string) *Client {
 		HTTP: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		TokenRefreshSkew: time.Minute,
 	}
 	c.Escrows = &EscrowsService{c: c}
+	c.OAuth = &OAuthService{c: c}
+	c.Collections = &CollectionsService{c: c}
+	c.Checkout = &CheckoutService{c: c}
+	c.Payouts = &PayoutsService{c: c}
+	c.BulkPayouts = &BulkPayoutsService{c: c}
+	c.Transfers = &TransfersService{c: c}
+	c.Balance = &BalanceService{c: c}
+	c.Transactions = &TransactionsService{c: c}
+	c.PaymentLinks = &PaymentLinksService{c: c}
+	c.Invoices = &InvoicesService{c: c}
 	return c
+}
+
+// NewWithClientCredentials returns a client that authenticates with an OAuth2 client-credentials
+// access token, fetched on first use and cached until shortly before it expires.
+func NewWithClientCredentials(clientID, clientSecret string) *Client {
+	c := New("")
+	c.ClientID = clientID
+	c.ClientSecret = clientSecret
+	return c
+}
+
+func (c *Client) usesClientCredentials() bool { return c.Token == "" && c.ClientID != "" }
+
+func (c *Client) now() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+	return time.Now()
+}
+
+// BearerToken returns the static Token, or a cached client-credentials access token.
+func (c *Client) BearerToken(ctx context.Context) (string, error) {
+	if !c.usesClientCredentials() {
+		return c.Token, nil
+	}
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+	if c.accessToken != "" && c.now().Before(c.tokenRefresh) {
+		return c.accessToken, nil
+	}
+	t, err := c.OAuth.CreateToken(ctx, c.ClientID, c.ClientSecret)
+	if err != nil {
+		return "", err
+	}
+	c.accessToken = t.AccessToken
+	c.tokenRefresh = c.now().Add(time.Duration(t.ExpiresIn)*time.Second - c.TokenRefreshSkew)
+	return c.accessToken, nil
+}
+
+func (c *Client) invalidateToken() {
+	c.tokenMu.Lock()
+	c.accessToken = ""
+	c.tokenMu.Unlock()
 }
 
 type Error struct {
@@ -63,12 +142,16 @@ type Response struct {
 	Message string          `json:"message"`
 	Data    json.RawMessage `json:"data"`
 	Paging  json.RawMessage `json:"paging"`
+	// Raw is the whole response body, for endpoints that answer without a data envelope.
+	Raw json.RawMessage `json:"-"`
 }
 
 type Request struct {
 	Body           any
 	Query          url.Values
 	IdempotencyKey string
+	// NoAuth sends no Authorization or idempotency header (used for /oauth/token).
+	NoAuth bool
 }
 
 func newKey() string {
@@ -104,15 +187,22 @@ func (c *Client) Do(ctx context.Context, method, path string, req Request, out a
 		payload = b
 	}
 	key := req.IdempotencyKey
-	if method != http.MethodGet && key == "" {
+	if method != http.MethodGet && key == "" && !req.NoAuth {
 		key = newKey()
 	}
+	refreshed := false
 	for attempt := 0; ; attempt++ {
 		hr, err := http.NewRequestWithContext(ctx, method, u, bytes.NewReader(payload))
 		if err != nil {
 			return nil, err
 		}
-		hr.Header.Set("Authorization", "Bearer "+c.Token)
+		if !req.NoAuth {
+			token, err := c.BearerToken(ctx)
+			if err != nil {
+				return nil, err
+			}
+			hr.Header.Set("Authorization", "Bearer "+token)
+		}
 		hr.Header.Set("Accept", "application/json")
 		if payload != nil {
 			hr.Header.Set("Content-Type", "application/json")
@@ -132,6 +222,12 @@ func (c *Client) Do(ctx context.Context, method, path string, req Request, out a
 		}
 		raw, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		if resp.StatusCode == http.StatusUnauthorized && !req.NoAuth && c.usesClientCredentials() && !refreshed {
+			// The cached access token was revoked or expired early: fetch a new one once, same key.
+			refreshed = true
+			c.invalidateToken()
+			continue
+		}
 		retryable := resp.StatusCode == 429 || resp.StatusCode == 502 || resp.StatusCode == 503 || resp.StatusCode == 504
 		if retryable && attempt < c.MaxRetries {
 			ra, _ := strconv.Atoi(resp.Header.Get("Retry-After"))
@@ -142,13 +238,19 @@ func (c *Client) Do(ctx context.Context, method, path string, req Request, out a
 		}
 		var env struct {
 			Response
-			Code string `json:"code"`
+			Code     string `json:"code"`
+			OAuthErr string `json:"error"`
 		}
 		_ = json.Unmarshal(raw, &env)
+		env.Raw = raw
 		if resp.StatusCode >= 400 {
+			code := env.Code
+			if code == "" {
+				code = env.OAuthErr
+			}
 			return nil, &Error{
 				Status:  resp.StatusCode,
-				Code:    env.Code,
+				Code:    code,
 				Message: env.Message,
 				Body:    raw,
 			}
